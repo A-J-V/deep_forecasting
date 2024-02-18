@@ -1,7 +1,7 @@
 # Deep Forecasting
 
 ## Description
-This project demontrates the power of deep learning applied to forecasting use-cases by engineering a model based on Google Research's 2023 Time Series Mixer architecture.
+This project demontrates the power of deep learning applied to forecasting use-cases by engineering a model based on Google Research's TSMixer architecture as described in [the 2023 paper](https://arxiv.org/abs/2303.06053) by Chen et. al.
 
 A demonstration of the model's capacity to simultaneously forecast a large number of parallel time series' is included using data derived from an open ![dataset](https://data.iowa.gov/Sales-Distribution/Iowa-Liquor-Sales/m3tr-qhgy/about_data) that records Iowa liquor sales.
 
