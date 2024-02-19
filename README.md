@@ -3,7 +3,7 @@
 ## Description
 This project demontrates the power of deep learning applied to forecasting use-cases by engineering a model based on Google Research's TSMixer architecture as described in [the 2023 paper](https://arxiv.org/abs/2303.06053) by Chen et. al.
 
-A demonstration of the model's capacity to simultaneously forecast a large number of parallel time series' is included using data derived from an open [dataset](https://data.iowa.gov/Sales-Distribution/Iowa-Liquor-Sales/m3tr-qhgy/about_data) that records Iowa liquor sales.
+A demonstration of the model's capacity to simultaneously forecast a large number of parallel time series is included using data derived from an open [dataset](https://data.iowa.gov/Sales-Distribution/Iowa-Liquor-Sales/m3tr-qhgy/about_data) that records Iowa liquor sales.
 
 ![Model](https://img.shields.io/badge/Neural_Network_Architecture-Complete-green)
 ![Utilities](https://img.shields.io/badge/Utilities-Complete-green)
@@ -32,7 +32,7 @@ On Windows: `deep-forecasting\Scripts\activate.bat`
 ## Usage and Demo
 This repo can be used in parallel time series forecasting. The model and utilities are included in their respective py files, and __main__.py and the dataset in the assets folder provide a working example.
 
-The example dataset is a 100 parallel time series' representing the liquor revenues in the counties of Iowa over the last few years. Each observation is one month. The last three features are sin/cos encoded periodicity and the time step.
+The example dataset is a 100 parallel time series representing the liquor revenues in the counties of Iowa over the last few years. Each observation is one month. The last three features are sin/cos encoded periodicity and the time step.
 
 In __main__.py, we're setting our lookback to 12 and forecast to 6. This indicates that we want to forecast the next 6 time steps by taking the previous into consideration (by using them as features).
 
@@ -58,7 +58,7 @@ With the data ready for training, we use a couple helper functions, get_tsds() a
 
 We can train it just by calling it's train() method and passing in the relevant arguments. It also has a loss_curve() method and score() method to use as a training diagnostic and performance check.
 
-In this example, despite using only the time series data and their periodicities, and not allowing for tuning of hidden units, the model achieves a ~50% boost in performance over a naive model. With more careful feature engineering and including additional functionality, such as the ability for the model to accept static covariates specific to certain time series', the abilities of this model can likely expand.
+In this example, despite using only the time series data and their periodicities, and not allowing for tuning of hidden units, the model achieves a ~50% boost in performance over a naive model. With more careful feature engineering and including additional functionality, such as the ability for the model to accept static covariates specific to certain time series, the abilities of this model can likely expand.
 
 This model is imperfect, but considering that it's a quick and dirty forecast of all 100 counties with minimal effort, it isn't bad at all.
 
