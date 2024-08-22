@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from typing import Optional, Callable
 
 from model import TSMixer
 
@@ -8,11 +9,39 @@ from model import TSMixer
 class TSM:
     """ A model class used to build, train, and predict with a TSMixer architecture. """
 
-    def __init__(self, lookback, features, forecast, blocks, dropout, num_aux=0, device='cpu'):
+    def __init__(self,
+                 lookback: int,
+                 features: int,
+                 forecast: int,
+                 blocks: int,
+                 dropout: float = 0.0,
+                 num_aux: int = 0,
+                 device: str = 'cpu',
+                 ) -> None:
         """
         Initialize the model.
         Data parameters must match the DataLoaders that will be passed in for training.
+
+        :param lookback: The number of prior timesteps to use as features for predictions.
+        :type lookback: int
+        :param features: The number of columns in the data that represent type series.
+        :type features: int
+        :param forecast: The number of future timesteps to forecast when predicting.
+        :type forecast: int
+        :param blocks: The number of Time Series Mixer blocks to use in the model. More blocks means a deeper model.
+        :type blocks: int
+        :param dropout: The proportion of weights to drop in the parameters during training (for regularization).
+                        Note that empirically, setting unusually high dropout often works well with this model.
+        :type dropout: float
+        :param num_aux: The number of auxiliary features in the data.
+        :type num_aux: int
+        :param device: Which device to use with Pytorch. Tested using 'cpu' and 'cuda'.
+        :type device: str
         """
+        assert num_aux >= 0, "num_aux must be >= 0! Try using normalized timestep or sin/cos for periodicity."
+        assert 0.0 <= dropout < 1.0, "dropout must fall within [0.0, 1.0)!"
+
+
         self.lookback = lookback
         self.features = features
         self.forecast = forecast
@@ -59,8 +88,8 @@ class TSM:
                 print(f'Epoch: {epoch} | Train Loss: {train_loss:.4f} | Val Loss: {test_loss:.4f} |')
 
     def predict(self,
-                obs,
-                ):
+                obs: torch.Tensor,
+                ) -> np.ndarray:
         """
         Feed the observation through the model and returns prediction.
 
@@ -70,15 +99,17 @@ class TSM:
         By default, squeezes and converts the prediction to numpy before returning it.
         """
 
+        # If the passed obs is only 2 dimension, it probably isn't a batch, so unsqueeze it.
         if obs.dim() == 2:
             obs = obs.unsqueeze(0)
         elif obs.dim() != 3:
             raise ValueError(f"Expected input to be 3 dimensions, received {obs.dim()}.")
 
         self.model.eval()
-        with torch.inference_mode():
+        with torch.no_grad():
             pred = self.model(obs.to(self.device))
             pred = pred.squeeze().cpu().numpy()
+
         return pred
 
     def score(self,
@@ -113,16 +144,41 @@ class TSM:
         else:
             raise Exception(f"Device {device} not recognized!")
 
-    def MASE_(self, pred: np.ndarray, true: np.array):
-        """ Helper function to calculate Mean Absolute Scaled Error """
+    def MASE_(self,
+              pred: np.ndarray,
+              true: np.ndarray,
+              naive_error: Optional[float] = None,
+              ) -> float:
+        """ Calculate the Mean Absolute Scaled Error.
+
+        Given the model's predictions, the true values, and an optional error calculated from an alternative method,
+        return the model's MAE scaled to the alternative method's MAE. This can be interpreted the same way as "lift"
+        and gives a strong intuitive indication of how much better this model is to the alternative.
+
+        :param pred: The model's predictions.
+        :type pred: np.ndarray
+        :param true: The true values.
+        :type true: np.ndarray
+        :param naive_error: The MAE of the predictions made by an alternative method.
+        :type naive_error: Optional[float]
+        :return: The Mean Absolute Scaled Error.
+        :rtype: float
+        """
+
+        # Calculate the MAE for each prediction, then get the average MAE over the batch of predictions.
         error = pred - true
         abs_error = np.abs(error)
         MAE = abs_error.sum() / (true.shape[0] * true.shape[1])
 
-        shifted = true[1:, :]
-        clipped_original = true[:-1, :]
-        naive_error = shifted - clipped_original
-        abs_naive_error = np.abs(naive_error)
+        # If the naive_error from some other method is provided, we will use that. Should be MSE or
+        if naive_error is not None:
+            abs_naive_error = naive_error
+        else:
+            shifted = true[1:, :]
+            clipped_original = true[:-1, :]
+            naive_error = shifted - clipped_original
+            abs_naive_error = np.abs(naive_error)
+
         MANE = abs_naive_error.sum() / ((true.shape[0] - 1) * true.shape[1])
 
         MASE = MAE / MANE
@@ -134,14 +190,13 @@ class TSM:
                     dataloader: torch.utils.data.DataLoader,
                     loss_fn: torch.nn.Module,
                     optimizer: torch.optim.Optimizer,
-                    ):
+                    ) -> float:
 
         # Set the model to train mode
         model.train()
 
         # Set up the training loss and validation accuracy
         train_loss = 0
-        train_acc = 0
 
         for X, y in dataloader:
             # Send the data to the target device
@@ -172,7 +227,7 @@ class TSM:
                    model: torch.nn.Module,
                    dataloader: torch.utils.data.DataLoader,
                    loss_fn: torch.nn.Module,
-                   ):
+                   ) -> float:
 
         # Set the model to evaluation mode
         model.eval()
@@ -181,7 +236,7 @@ class TSM:
         test_loss = 0
         test_acc = 0
 
-        with torch.inference_mode():
+        with torch.no_grad():
             for X, y in dataloader:
                 # Send the data to the target device
                 X, y = X.to(self.device), y.to(self.device)
