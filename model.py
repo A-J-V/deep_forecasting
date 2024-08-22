@@ -11,7 +11,10 @@ class MLPTimeBlock(nn.Module):
     lookback period as features.
     """
 
-    def __init__(self, features, dropout):
+    def __init__(self,
+                 features: int,
+                 dropout: float,
+                 ):
         super().__init__()
         self.mlp = nn.Sequential(nn.Linear(in_features=features,
                                            out_features=features),
@@ -32,7 +35,10 @@ class MLPFeatureBlock(nn.Module):
     features.
     """
 
-    def __init__(self, features, dropout):
+    def __init__(self,
+                 features: int,
+                 dropout: float,
+                 ):
         super().__init__()
         self.mlp = nn.Sequential(nn.Linear(in_features=features,
                                            out_features=features),
@@ -50,7 +56,11 @@ class MLPFeatureBlock(nn.Module):
 class MixerLayer(nn.Module):
     """ Extract information across time and features. """
 
-    def __init__(self, lookback, features, dropout):
+    def __init__(self,
+                 lookback: int,
+                 features: int,
+                 dropout: float,
+                 ):
         super().__init__()
         self.batchnorm1 = nn.BatchNorm1d(features)
         self.mlp_time = MLPTimeBlock(lookback, dropout)
@@ -77,7 +87,10 @@ class TemporalProjection(nn.Module):
     original format to serve as a forecast.
     """
 
-    def __init__(self, seq_len, forecast=1, num_aux=0):
+    def __init__(self,
+                 seq_len,
+                 forecast=1,
+                 ):
         super().__init__()
         self.fc = nn.Linear(in_features=seq_len,
                             out_features=forecast
@@ -92,7 +105,33 @@ class TemporalProjection(nn.Module):
 class TSMixer(nn.Module):
     """ Pytorch model based roughly on Google Research's 2023 paper on TSMixer. """
 
-    def __init__(self, lookback, features, forecast, blocks, dropout, num_aux=0):
+    def __init__(self,
+                 lookback: int,
+                 features: int,
+                 forecast: int,
+                 blocks: int,
+                 dropout: float,
+                 num_aux: int = 0,
+                 ):
+        """
+        :param lookback: The number of prior timesteps to use as features for predictions.
+        :type lookback: int
+        :param features: The number of columns in the data that represent type series.
+        :type features: int
+        :param forecast: The number of future timesteps to forecast when predicting.
+        :type forecast: int
+        :param blocks: The number of Time Series Mixer blocks to use in the model. More blocks means a deeper model.
+        :type blocks: int
+        :param dropout: The proportion of weights to drop in the parameters during training (for regularization).
+                        Note that empirically, setting unusually high dropout often works well with this model.
+        :type dropout: float
+        :param num_aux: The number of auxiliary features in the data.
+        :type num_aux: int
+        """
+        assert features > 0, "Cannot have a model with no features!"
+        assert forecast > 0, "Cannot have a model with no forecasts!"
+        assert num_aux > 0, "Must have at least one auxiliary feature!"
+
         super().__init__()
         self.features = features
         self.num_aux = num_aux
