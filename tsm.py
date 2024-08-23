@@ -233,14 +233,14 @@ class TSM:
 
         # If the naive_error from some other method is provided, we will use that. Should be MSE or
         if naive_error is not None:
-            abs_naive_error = naive_error
+            MANE = naive_error
         else:
             shifted = true[1:, :]
             clipped_original = true[:-1, :]
             naive_error = shifted - clipped_original
             abs_naive_error = np.abs(naive_error)
 
-        MANE = abs_naive_error.sum() / ((true.shape[0] - 1) * true.shape[1])
+            MANE = abs_naive_error.sum() / ((true.shape[0] - 1) * true.shape[1])
 
         MASE = MAE / MANE
 
