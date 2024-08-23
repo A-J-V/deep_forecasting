@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from torch.optim import Adam
@@ -5,6 +6,7 @@ from torch.optim import Adam
 from tsm import TSM
 from utils import TSManager, get_tsds, get_dataloaders
 
+# This is just a sample of how to the library works.
 if __name__ == '__main__':
     # Lookback sets how many time steps back in the past we want to consider as features in our forecast
     lookback = 12
@@ -24,7 +26,8 @@ if __name__ == '__main__':
 
     # We're using a helper class to automatically detrend and normalize all of our time series data and store the info
     # to be able to invert that process to get the forecasts back to the natural scale.
-    manager = TSManager(data, num_aux=3)
+    # Note that the three aux features are timestep (to learn linear trends), and sin/cos (to learn seasonality)
+    manager = TSManager(data, num_aux=num_aux)
     processed_data = manager.transform_all(data)
 
     # Load the processed data into Pytorch datasets using a function
@@ -36,7 +39,7 @@ if __name__ == '__main__':
                                  )
 
     # Put the datasets into Pytorch dataloaders using a function
-    train_loader, test_loader = get_dataloaders(train_ds, test_ds, batch_size=4)
+    train_loader, test_loader = get_dataloaders(train_ds, test_ds, train_batch_size=4, test_batch_size=4)
 
     # Instantiate the model class. This contains both the Pytorch model and some helpful additional functionality.
     model = TSM(lookback=lookback,
@@ -55,19 +58,26 @@ if __name__ == '__main__':
     # Train the model.
     model.train(train_dataloader=train_loader,
                 test_dataloader=test_loader,
-                epochs=300,
+                epochs=250,
                 loss_fn=torch.nn.MSELoss(),
                 optimizer=optimizer,
                 verbose=False,
                 )
 
     # We can plot a loss curve as a simple diagnostic to see how training went
-    model.loss_curve()
+    #model.loss_curve()
+    print(f"Shape of an observation is: {test_ds[0][0].shape}")
+    print(f"The shape of all processed data is: {processed_data.shape}")
 
     # A "Naive" forecast is that t + 1 = t
     # Given a timeseries up to time t and the targets up to t + forecast, the model can score itself and
     # report how much better it is than a naive model using Mean Absolute Scaled Error (MASE)
-    print(f"Model error is {100 * (1 - model.score(test_ds[0][0], test_ds[0][1])):.2f}% better than Naive Prediction error.")
+    print(f"Model predictions are {100 * (1 - model.score(test_ds[0][0], test_ds[0][1])):.2f}% better than Naive Prediction error.")
 
     # With no static data and only the periodicity and timesteps as auxiliary data, we can simultaneously forecast
     # liquor revenues of all 100 counties in Iowa 6 months into the future with a ~50% improvement over naive methods.
+
+    # To get the forecasts back on the original scale, we can use the TSManager.
+    scaled_preds = model.predict_scale(data=processed_data,
+                                       manager=manager,
+                                       )
