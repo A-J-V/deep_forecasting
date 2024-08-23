@@ -1,13 +1,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import torch
 from typing import Optional, Callable
 
 from model import TSMixer
+from utils import TSManager
 
 
 class TSM:
-    """ A model class used to build, train, and predict with a TSMixer architecture. """
+    """ A model class used to build, train, and predict with a TSMixer-inspired architecture. """
 
     def __init__(self,
                  lookback: int,
@@ -54,6 +56,7 @@ class TSM:
                      'train_loss': [],
                      'test_loss': [],
                      }
+        self.num_aux = num_aux
         self.device = device
 
     def train(self,
@@ -91,12 +94,15 @@ class TSM:
                 obs: torch.Tensor,
                 ) -> np.ndarray:
         """
-        Feed the observation through the model and returns prediction.
-
-        Expects dimension of obs to be (batch, features, timesteps). Three
-        shall be the number of dimensions. Five is right out.
-
+        Feed the observations through the model and returns prediction.
+        Expects dimension of obs to be (batch, features, time_steps).
         By default, squeezes and converts the prediction to numpy before returning it.
+        NOTE: If this model was trained on pre-processed data using TSManager, consider using predict_scale() instead!
+
+        :param obs: A batch of observations.
+        :type obs: torch.Tensor
+        :return: A batch of predictions.
+        :rtype: np.ndarray
         """
 
         # If the passed obs is only 2 dimension, it probably isn't a batch, so unsqueeze it.
@@ -111,6 +117,61 @@ class TSM:
             pred = pred.squeeze().cpu().numpy()
 
         return pred
+
+    def predict_scale(self,
+                      data: pd.DataFrame,
+                      manager: TSManager,
+                      ) -> pd.DataFrame:
+        """
+        Feed the observations through the model and returns prediction.
+        Expects dimension of obs to be (batch, features, time_steps).
+
+        This function also requires a TSManager so that it can automatically convert the predictions to the original
+        scale. The workflow of this would be to use TSManager to pre-process a dataset for easier learning, and use that
+        dataset to train the model, then when making predictions, pass the ENTIRE preprocessed dataset AND the TSManager
+        that did the preprocessing to this function.
+
+        By default, squeezes and converts the prediction to numpy before returning it.
+
+        :param data: A batch of observations in a Pandas df. This should be what TSManager.transform_all returns.
+        :type data: pd.DataFrame
+        :param manager: The TSManager that will be used to rescale the predictions.
+        :return: A batch of predictions converted to the original dataset's scale.
+        :rtype: np.ndarray
+        """
+
+        # Save the column names of the non-auxiliary features from the input DataFrame
+        col_names = data.columns.to_list()[: -self.num_aux]
+
+        # Convert the observations into torch tensor form.
+        torch_data = torch.Tensor(data.values).permute(1, 0).to(self.device)
+
+        # If the passed data is only 2 dimension, it probably isn't a batch, so unsqueeze it.
+        if torch_data.dim() == 2:
+            torch_data = torch_data.unsqueeze(0)
+        elif torch_data.dim() != 3:
+            raise ValueError(f"Expected input to be 3 dimensions, received {torch_data.dim()}.")
+
+        # We want to separate the lookback data to use as features from the rest of the dataset.
+        lookback_data = torch_data[:, :, -self.lookback:]
+
+        # Run the model to get the raw predictions
+        self.model.eval()
+        with torch.no_grad():
+            raw_preds = self.model(lookback_data.to(self.device)).permute(0, 2, 1)
+
+        # Now drop the auxiliary features (we don't want them in the forecast) and concatenate the data with preds.
+        torch_data = torch_data[:, :-self.num_aux, :]
+        data_with_preds = torch.cat((torch_data, raw_preds), dim=2).detach().cpu().squeeze().permute(1, 0).numpy()
+
+        # Convert to a Pandas DataFrame and invert the preprocessing to get everything back on the original scale.
+        scaled_preds = pd.DataFrame(data_with_preds)
+        scaled_preds.columns = col_names
+        scaled_preds = manager.invert_all(scaled_preds)
+
+        # Return the forecasted portion of the data. The predictions are now back in the original scale of the data.
+        scaled_preds = scaled_preds.iloc[-self.forecast:, :]
+        return scaled_preds
 
     def score(self,
               obs,
