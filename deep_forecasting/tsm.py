@@ -4,8 +4,8 @@ import pandas as pd
 import torch
 from typing import Optional, Callable
 
-from model import TSMixer
-from utils import TSManager
+from .model import TSMixer
+from .utils import TSManager
 
 
 class TSM:

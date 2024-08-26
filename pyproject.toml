@@ -1,0 +1,30 @@
+[build-system]
+requires=["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deep_forecasting"
+version = "0.0.1"
+authors = [
+    {name = "Alexander J Valarus"}
+]
+description = "A general model for forecasting parallel time series"
+requires-python = ">=3.8"
+dependencies = [
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "torch"
+]
+keywords = ["forecasting", "time series", "deep learning"]
+classifiers = [
+    "Framework :: Pytorch",
+    "Development Status :: 4 - Beta",
+    "Programming Language:: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = {text = "MIT"}
+readme = "README.md"
+
+[tool.setuptools.packages.find]
+exclude = ["demo_folder", "demo_folder.*"]
