@@ -220,7 +220,7 @@ class TSM:
         return the model's MAE scaled to the alternative method's MAE. This can be interpreted the same way as "lift"
         and gives a strong intuitive indication of how much better this model is to the alternative.
 
-        If tehre are no naive_preds passed in, then MASE is calculated using a naive model of t + 1 = t
+        If there are no naive_preds passed in, then MASE is calculated using a naive model of t + 1 = t
 
         :param pred: The model's predictions.
         :type pred: np.ndarray
@@ -241,7 +241,7 @@ class TSM:
         if naive_preds is not None:
             naive_error = naive_preds - true
             naive_abs_error = np.abs(naive_error)
-            MANE = naive_abs_error.sum() / (true.shape[0] * true.shape[1])
+            MANE = naive_abs_error.sum() / ((true.shape[0] - 1) * true.shape[1])
 
         else:
             shifted = true[1:, :]
