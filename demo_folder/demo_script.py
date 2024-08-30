@@ -21,7 +21,7 @@ num_aux = 3
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # Load the demo dataset. The prepared iowa liquor demo dataset is available on GitHub.
-data = pd.read_csv("./demo_folder/iowa_liquor_demo_dataset.csv")
+data = pd.read_csv("../demo_folder/iowa_liquor_demo_dataset.csv")
 
 # We're using a helper class to automatically detrend and normalize all of our time series data and store the info
 # to be able to invert that process to get the forecasts back to the natural scale.

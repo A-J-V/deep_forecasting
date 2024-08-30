@@ -177,12 +177,16 @@ class TSM:
               obs,
               true,
               ):
-        """ Score the model by taking the predictors and true values and returning the model's MASE """
+        """ Score the model by taking the predictors and true values and returning the model's MASE
+
+        This function is designed to be used with datasets as trained, not with actual predictions
+        that may have been converted to different scales. For that, use self.MASE() instead.
+        """
         pred = self.predict(obs)
 
         if not isinstance(true, np.ndarray):
             true = true.cpu().numpy()
-        MASE = self.MASE_(pred, true)
+        MASE = self.MASE(pred, true)
         return MASE
 
     def loss_curve(self):
@@ -205,23 +209,25 @@ class TSM:
         else:
             raise Exception(f"Device {device} not recognized!")
 
-    def MASE_(self,
+    def MASE(self,
               pred: np.ndarray,
               true: np.ndarray,
-              naive_error: Optional[float] = None,
+              naive_preds: Optional[np.ndarray] = None,
               ) -> float:
         """ Calculate the Mean Absolute Scaled Error.
 
-        Given the model's predictions, the true values, and an optional error calculated from an alternative method,
+        Given the model's predictions, the true values, and optional naive preds from an alternative method,
         return the model's MAE scaled to the alternative method's MAE. This can be interpreted the same way as "lift"
         and gives a strong intuitive indication of how much better this model is to the alternative.
+
+        If tehre are no naive_preds passed in, then MASE is calculated using a naive model of t + 1 = t
 
         :param pred: The model's predictions.
         :type pred: np.ndarray
         :param true: The true values.
         :type true: np.ndarray
-        :param naive_error: The MAE of the predictions made by an alternative method.
-        :type naive_error: Optional[float]
+        :param naive_preds: A NumPy array of predictions made by an alternative method.
+        :type naive_preds: Optional[np.array]
         :return: The Mean Absolute Scaled Error.
         :rtype: float
         """
@@ -232,8 +238,11 @@ class TSM:
         MAE = abs_error.sum() / (true.shape[0] * true.shape[1])
 
         # If the naive_error from some other method is provided, we will use that. Should be MSE or
-        if naive_error is not None:
-            MANE = naive_error
+        if naive_preds is not None:
+            naive_error = naive_preds - true
+            naive_abs_error = np.abs(naive_error)
+            MANE = naive_abs_error.sum() / (true.shape[0] * true.shape[1])
+
         else:
             shifted = true[1:, :]
             clipped_original = true[:-1, :]
