@@ -1,7 +1,7 @@
 # Deep Forecasting
 
 ## Description
-This project demontrates the power of deep learning applied to forecasting use-cases by engineering a model based on Google Research's TSMixer architecture as described in [the 2023 paper](https://arxiv.org/abs/2303.06053) by Chen et. al.
+This project demonstrates the power of deep learning applied to forecasting use-cases by engineering a model inspired by Google Research's TSMixer architecture as described in [the 2023 paper](https://arxiv.org/abs/2303.06053) by Chen et. al.
 
 A demonstration of the model's capacity to simultaneously forecast a large number of parallel time series is included using data derived from an open [dataset](https://data.iowa.gov/Sales-Distribution/Iowa-Liquor-Sales/m3tr-qhgy/about_data) that records Iowa liquor sales.
 
@@ -11,23 +11,11 @@ A demonstration of the model's capacity to simultaneously forecast a large numbe
 ![Demo](https://img.shields.io/badge/Demo-Complete-green)
 
 ## Installation
-While this is a small project not published to PyPi, it is still fully functional to learn about the TS Mixer architecture and use it for forecasting.
+While this is a small project not published to PyPi, it is still fully functional and can be used for forecasting.
 
-1. Clone this repo and cd to it
+Install directly from GitHub using pip
 
-`git clone https://github.com/A-J-V/deep_forecasting.git`
-
-`cd deep_forecasting`
-
-2. Create and activate a virtual environment, then install the requirements using the provided requirements.txt file. Note that you may need a different version of Pytorch depending on your GPU configuration!
-
-`python3 -m venv deep-forecasting`
-
-On Unix: `source deep-forecasting/bin/activate`
-
-On Windows: `deep-forecasting\Scripts\activate.bat`
-
-`pip install -r requirements.txt`
+`pip install git+https://github.com/A-J-V/deep_forecasting.git@master`
 
 ## Usage and Demo
 This repo can be used in parallel time series forecasting. The model and utilities are included in their respective py files, and __main__.py and the dataset in the assets folder provide a working example.
