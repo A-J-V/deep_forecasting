@@ -121,7 +121,8 @@ class TSM:
     def predict_scale(self,
                       data: pd.DataFrame,
                       manager: TSManager,
-                      ) -> pd.DataFrame:
+                      predictions_only: bool = True,
+                      ) -> np.ndarray:
         """
         Feed the observations through the model and returns prediction.
         Expects dimension of obs to be (batch, features, time_steps).
@@ -136,6 +137,8 @@ class TSM:
         :param data: A batch of observations in a Pandas df. This should be what TSManager.transform_all returns.
         :type data: pd.DataFrame
         :param manager: The TSManager that will be used to rescale the predictions.
+        :type manager: TSManager
+        :param predictions_only: `True` returns predictions only, `False` returns all data with predictions at the end.
         :return: A batch of predictions converted to the original dataset's scale.
         :rtype: np.ndarray
         """
@@ -169,9 +172,10 @@ class TSM:
         scaled_preds.columns = col_names
         scaled_preds = manager.invert_all(scaled_preds)
 
-        # Return the forecasted portion of the data. The predictions are now back in the original scale of the data.
-        scaled_preds = scaled_preds.iloc[-self.forecast:, :]
-        return scaled_preds
+        # The predictions are now back in the original scale of the data. Return according to predictions_only.
+        if predictions_only:
+            scaled_preds = scaled_preds.iloc[-self.forecast:, :]
+        return scaled_preds.to_numpy()
 
     def score(self,
               obs,

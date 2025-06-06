@@ -1,3 +1,5 @@
+"""Contains the PyTorch modules that comprise the architecture of the main network in this package."""
+
 import torch
 from torch import nn
 
@@ -23,6 +25,7 @@ class MLPTimeBlock(nn.Module):
                                  )
 
     def forward(self, x):
+        # x is [batch_size, time series, time step]
         return self.mlp(x)
 
 
@@ -30,9 +33,8 @@ class MLPFeatureBlock(nn.Module):
     """
     Accept tensors and pass them through linear, ReLU, dropout, linear, dropout.
 
-    This block is a feature-wise fully-connected layer that expects features
-    to be the final dimensions of the input, and treats the features as
-    features.
+    This block is a feature-wise fully-connected layer that expects the time series' (features)
+    to be the final dimension of the input.
     """
 
     def __init__(self,
@@ -50,6 +52,7 @@ class MLPFeatureBlock(nn.Module):
                                  )
 
     def forward(self, x):
+        # x is [batch size, time step, time series]
         return self.mlp(x)
 
 

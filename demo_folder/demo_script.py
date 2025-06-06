@@ -22,6 +22,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # Load the demo dataset. The prepared iowa liquor demo dataset is available on GitHub.
 data = pd.read_csv("../demo_folder/iowa_liquor_demo_dataset.csv")
+print(data.head())
 
 # We're using a helper class to automatically detrend and normalize all of our time series data and store the info
 # to be able to invert that process to get the forecasts back to the natural scale.
@@ -47,7 +48,8 @@ model = TSM(lookback=lookback,
             blocks=1,
             dropout=0.75,
             num_aux=num_aux,
-            device=device)
+            device=device,
+            )
 
 # Choose the optimizer we'll be using.
 optimizer = Adam(params=model.model.parameters(),
@@ -58,9 +60,9 @@ optimizer = Adam(params=model.model.parameters(),
 model.train(train_dataloader=train_loader,
             test_dataloader=test_loader,
             epochs=250,
-            loss_fn=torch.nn.MSELoss(),
+            loss_fn=torch.nn.L1Loss(),
             optimizer=optimizer,
-            verbose=False,
+            verbose=True,
             )
 
 # We can plot a loss curve as a simple diagnostic to see how training went
@@ -80,4 +82,5 @@ print(f"Model predictions are {100 * (1 - model.score(test_ds[0][0], test_ds[0][
 # To get the forecasts back on the original scale, we can use predict_scale and pass the data and TSManager.
 # scaled_preds = model.predict_scale(data=processed_data,
 #                                    manager=manager,
+#                                    predictions_only=True,
 #                                    )
