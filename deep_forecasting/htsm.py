@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import re
 import torch
-from typing import Optional, Callable
 
 import deep_forecasting.utils
 from .model import HierarchicalTimeSeriesMixer
@@ -153,8 +152,8 @@ class HTSM:
         This function requires a TSManager so that it can automatically convert the predictions to the original
         scale. The workflow of this would be:
         1) use TSManager to preprocess a dataframe.
-        2) use that to build TSDS objects to train/validate the model.
-        3) build a TSDS object of the entire dataframe that is passed to this method for forecasting.
+        2) use that to build TSDS objects and train/validate the model.
+        3) build a TSDS object of the entire dataset and pass it to this method for forecasting.
 
         By default, squeezes and converts the prediction to numpy before returning it.
 
@@ -219,22 +218,6 @@ class HTSM:
             return scaled_preds
         return scaled_preds.to_numpy()
 
-    # def score(self,
-    #           obs,
-    #           true,
-    #           ):
-    #     """ Score the model by taking the predictors and true values and returning the model's MASE
-    #
-    #     This function is designed to be used with datasets as trained, not with actual predictions
-    #     that may have been converted to different scales. For that, use self.MASE() instead.
-    #     """
-    #     pred = self.predict(obs)
-    #
-    #     if not isinstance(true, np.ndarray):
-    #         true = true.cpu().numpy()
-    #     MASE = self.MASE(pred, true)
-    #     return MASE
-
     def loss_curve(self):
         """ Print the train and test loss curve of this model over training """
         plt.plot(self.logs['epoch'], self.logs['train_loss'], color='blue')
@@ -253,55 +236,7 @@ class HTSM:
             self.model.to('cuda')
             self.device = 'cuda'
         else:
-            raise Exception(f"Device {device} not recognized!")
-
-    # def MASE(self,
-    #           pred: np.ndarray,
-    #           true: np.ndarray,
-    #           naive_preds: Optional[np.ndarray] = None,
-    #           ) -> float:
-    #     """ Calculate the Mean Absolute Scaled Error.
-    #
-    #     Given the model's predictions, the true values, and optional naive preds from an alternative method,
-    #     return the model's MAE scaled to the alternative method's MAE. This can be interpreted the same way as "lift"
-    #     and gives a strong intuitive indication of how much better this model is to the alternative.
-    #
-    #     If there are no naive_preds passed in, then MASE is calculated using a naive model of t + 1 = t. NOTE
-    #     that this is only relevant if the forecast length is 1, otherwise it isn't really a fair comparison
-    #     since it will know future timesteps. It's recommended to pass in naive_preds to be sure.
-    #
-    #     :param pred: The model's predictions.
-    #     :type pred: np.ndarray
-    #     :param true: The true values.
-    #     :type true: np.ndarray
-    #     :param naive_preds: A NumPy array of predictions made by an alternative method.
-    #     :type naive_preds: Optional[np.array]
-    #     :return: The Mean Absolute Scaled Error.
-    #     :rtype: float
-    #     """
-    #
-    #     # Calculate the MAE for each prediction, then get the average MAE over the batch of predictions.
-    #     error = pred - true
-    #     abs_error = np.abs(error)
-    #     MAE = abs_error.sum() / (true.shape[0] * true.shape[1])
-    #
-    #     # If the naive_error from some other method is provided, we will use that. Should be MSE or
-    #     if naive_preds is not None:
-    #         naive_error = naive_preds - true
-    #         naive_abs_error = np.abs(naive_error)
-    #         MANE = naive_abs_error.sum() / (true.shape[0] * true.shape[1])
-    #
-    #     else:
-    #         shifted = true[1:, :]
-    #         clipped_original = true[:-1, :]
-    #         naive_error = shifted - clipped_original
-    #         abs_naive_error = np.abs(naive_error)
-    #
-    #         MANE = abs_naive_error.sum() / ((true.shape[0] - 1) * true.shape[1])
-    #
-    #     MASE = MAE / MANE
-    #
-    #     return MASE
+            raise Exception(f"Device {device} not supported! Try 'cpu' or 'cuda'.")
 
     def train_step_(self,
                     model: torch.nn.Module,
@@ -352,7 +287,6 @@ class HTSM:
 
         # Set up the training loss and validation accuracy
         test_loss = 0
-        test_acc = 0
 
         with torch.no_grad():
             for X, y in dataloader:

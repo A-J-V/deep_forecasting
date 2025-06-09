@@ -4,7 +4,7 @@ def test_train():
     from pathlib import Path
     import torch
     from torch.optim import Adam
-    from deep_forecasting import TSM, TSManager, get_tsds, get_dataloaders
+    from deep_forecasting import HTSM, TSManager, get_tsds, get_dataloaders
 
     lookback = 6
     forecast = 6
@@ -14,28 +14,30 @@ def test_train():
     data = pd.read_csv(
         Path(__file__).parent / "synthetic_ts_data.csv",
     )
-    manager = TSManager(data, num_aux=num_aux)
+    manager = TSManager(data)
     processed_data = manager.transform_all(data)
 
     train_ds, test_ds = get_tsds(processed_data,
                                  lookback=lookback,
                                  forecast=forecast,
                                  train_prop=0.7,
-                                 num_aux=num_aux,
                                  )
     train_loader, test_loader = get_dataloaders(train_ds, test_ds, train_batch_size=4, test_batch_size=4)
 
-    model = TSM(lookback=lookback,
-                features=12,
-                forecast=forecast,
-                blocks=2,
-                dropout=0.75,
-                num_aux=num_aux,
-                device=device,
-                )
+    model = HTSM(lookback=lookback,
+                 dataset=train_ds,
+                 hidden_features=12,
+                 forecast=forecast,
+                 blocks=1,
+                 dropout=0.75,
+                 num_aux=num_aux,
+                 device=device,
+                 )
+
     optimizer = Adam(params=model.model.parameters(),
                      lr=0.001,
                      )
+
     model.train(train_dataloader=train_loader,
                 test_dataloader=test_loader,
                 epochs=50,
