@@ -32,6 +32,7 @@ def test_train():
                  dropout=0.75,
                  num_aux=num_aux,
                  device=device,
+                 final_global_mixer=True,
                  )
 
     optimizer = Adam(params=model.model.parameters(),

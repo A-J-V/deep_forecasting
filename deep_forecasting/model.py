@@ -57,7 +57,7 @@ class GroupedMixerBlock(nn.Module):
                  hidden_features: int,
                  dropout: float
                  ):
-        """ A block that facilitates an MLP-mixer-like operations over different clusters of time series'."""
+        """ A block that facilitates MLP-mixer-like operations over different clusters of time series'."""
         super().__init__()
 
         # Save registries
@@ -132,6 +132,25 @@ class GroupedMixerBlock(nn.Module):
         return x + identity
 
 
+class GlobalMixer(nn.Module):
+    def __init__(self, features: int, hidden_features: int, dropout: float):
+        super().__init__()
+        # This MLP sees all features (regardless of group) and enables global mixing.
+        self.mixer = MLPFeatureBlock(
+            in_features=features,
+            out_features=features,
+            hidden_features=hidden_features,
+            dropout=dropout,
+        )
+
+    def forward(self, x):  # x: [B, in_features, timesteps]
+        identity = x
+        x = x.transpose(1, 2)  # → [B, timesteps, in_features]
+        x = self.mixer(x)  # [B, timesteps, out_features]
+        x = x.transpose(1, 2)  # → [B, out_features, timesteps]
+        return x + identity
+
+
 class TemporalProjection(nn.Module):
     """Projection from timesteps to forecast."""
 
@@ -162,10 +181,10 @@ class HierarchicalTimeSeriesMixer(nn.Module):
                  forecast: int,
                  blocks: int,
                  dropout: float,
+                 final_global_mixer: bool = False,
                  ):
-
         super().__init__()
-        self.model = nn.Sequential(*[
+        self.grouped_blocks = nn.Sequential(*[
             nn.Sequential(*(GroupedMixerBlock(
                 lookback,
                 group_registry,
@@ -173,12 +192,20 @@ class HierarchicalTimeSeriesMixer(nn.Module):
                 aux_indices if i == 0 else [],
                 hidden_features,
                 dropout) for i in range(blocks)
-                           )
-                         ),
-            TemporalProjection(lookback, forecast)
-        ])
+            ))])
+
+        self.global_mixer = GlobalMixer(
+            features=len([idx for grp in group_registry.values() for idx in grp]),
+            hidden_features=hidden_features,
+            dropout=dropout,
+        ) if final_global_mixer else None
+
+        self.temporal_projection = TemporalProjection(lookback, forecast)
 
     def forward(self, x):
-        x = self.model(x)
+        x = self.grouped_blocks(x)
+        if self.global_mixer is not None:
+            x = self.global_mixer(x)
+        x = self.temporal_projection(x)
         # Does not return covariate or auxiliary features in the prediction!
         return x

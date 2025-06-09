@@ -21,6 +21,7 @@ class HTSM:
                  dropout: float = 0.0,
                  num_aux: int = 0,
                  device: str = 'cpu',
+                 final_global_mixer: bool = False,
                  ) -> None:
         """
         Data parameters must match the DataLoaders that will be passed in for training.
@@ -66,6 +67,7 @@ class HTSM:
             forecast=self.forecast,
             blocks=self.blocks,
             dropout=self.dropout,
+            final_global_mixer=final_global_mixer,
         )
 
         self.model.to(device)

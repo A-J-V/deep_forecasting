@@ -50,6 +50,7 @@ model = HTSM(lookback=lookback,
              dropout=0.7,
              num_aux=num_aux,
              device=device,
+             final_global_mixer=False,
              )
 
 # Choose the optimizer we'll be using.
