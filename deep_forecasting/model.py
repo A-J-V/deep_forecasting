@@ -2,16 +2,11 @@
 
 import torch
 from torch import nn
+from typing import Dict, List
 
 
 class MLPTimeBlock(nn.Module):
-    """
-    Accept tensors and pass them through linear, ReLU, and dropout.
-
-    This block is a time-wise fully-connected layer that expects time-steps
-    to be the final dimensions of the input, and treats the time-steps in the
-    lookback period as features.
-    """
+    """An MLP along the time-step dimension."""
 
     def __init__(self,
                  features: int,
@@ -20,7 +15,7 @@ class MLPTimeBlock(nn.Module):
         super().__init__()
         self.mlp = nn.Sequential(nn.Linear(in_features=features,
                                            out_features=features),
-                                 nn.ReLU(),
+                                 nn.GELU(),
                                  nn.Dropout(dropout),
                                  )
 
@@ -30,24 +25,21 @@ class MLPTimeBlock(nn.Module):
 
 
 class MLPFeatureBlock(nn.Module):
-    """
-    Accept tensors and pass them through linear, ReLU, dropout, linear, dropout.
-
-    This block is a feature-wise fully-connected layer that expects the time series' (features)
-    to be the final dimension of the input.
-    """
+    """An MLP along the feature dimension (a 'mixer' step)."""
 
     def __init__(self,
-                 features: int,
+                 in_features: int,
+                 out_features: int,
+                 hidden_features: int,
                  dropout: float,
                  ):
         super().__init__()
-        self.mlp = nn.Sequential(nn.Linear(in_features=features,
-                                           out_features=features),
-                                 nn.ReLU(),
+        self.mlp = nn.Sequential(nn.Linear(in_features=in_features,
+                                           out_features=hidden_features),
+                                 nn.GELU(),
                                  nn.Dropout(dropout),
-                                 nn.Linear(in_features=features,
-                                           out_features=features),
+                                 nn.Linear(in_features=hidden_features,
+                                           out_features=out_features),
                                  nn.Dropout(dropout),
                                  )
 
@@ -56,39 +48,92 @@ class MLPFeatureBlock(nn.Module):
         return self.mlp(x)
 
 
-class MixerLayer(nn.Module):
-    """ Extract information across time and features. """
-
+class GroupedMixerBlock(nn.Module):
     def __init__(self,
                  lookback: int,
-                 features: int,
-                 dropout: float,
+                 group_registry: Dict[str, List[int]],
+                 covariate_registry: Dict[str, List[int]],
+                 aux_indices: List[int],
+                 hidden_features: int,
+                 dropout: float
                  ):
+        """ A block that facilitates an MLP-mixer-like operations over different clusters of time series'."""
         super().__init__()
-        self.batchnorm1 = nn.BatchNorm1d(features)
+
+        # Save registries
+        self.group_registry = group_registry
+        self.covariate_registry = covariate_registry
+        self.aux_indices = aux_indices
+
+        # Flatten all group-only indices
+        self.group_indices = [idx for grp in group_registry.values() for idx in grp]
+
+        # Flatten all covariate indices (for norm2 shaping)
+        self.cov_indices = [idx for covs in covariate_registry.values() for idx in covs]
+
+        # Count up features for norm2
+        self.input_feature_count = len(self.group_indices)
+        self.aux_feature_count = len(self.aux_indices)
+        self.cov_feature_count = len(self.cov_indices)
+        total_feats = (self.input_feature_count +
+                       self.aux_feature_count +
+                       self.cov_feature_count
+                       )
+
+        # Time-mixing block
+        self.norm1 = nn.LayerNorm(lookback)  # normalize along last dim = time
         self.mlp_time = MLPTimeBlock(lookback, dropout)
-        self.batchnorm2 = nn.BatchNorm1d(features)
-        self.mlp_feat = MLPFeatureBlock(features, dropout)
+
+        # Feature-mixing prep
+        self.norm2 = nn.LayerNorm(total_feats)  # normalize across all series+aux+cov
+
+        # One MLP per group: in = group+aux+cov, out = group
+        self.group_mlps = nn.ModuleDict()
+        for gid, gidx in group_registry.items():
+            n_cov = len(covariate_registry.get(gid, []))
+            self.group_mlps[gid] = MLPFeatureBlock(
+                in_features=len(gidx) + self.aux_feature_count + n_cov,
+                hidden_features=hidden_features,
+                dropout=dropout,
+                out_features=len(gidx)
+            )
 
     def forward(self, x):
+        # x: [B, series_total, time]
         identity = x
-        x = self.batchnorm1(x)
+
+        # 1) Time mixing (shared)
+        x = self.norm1(x)
         x = self.mlp_time(x)
         x = x + identity
-        identity = x
-        x = self.batchnorm2(x)
-        x = torch.transpose(x, 1, 2)
-        x = self.mlp_feat(x)
-        x = torch.transpose(x, 1, 2)
-        x = x + identity
-        return x
+
+        # 2) Prepare residual for feature mixing (group-only)
+        #    slice out only the group series (no aux, no cov)
+        identity = x[:, self.group_indices, :]
+
+        # 3) Feature mixing prep: norm across series+aux+cov
+        x = torch.transpose(x, 1, 2)  # → [B, time, series_total]
+        x = self.norm2(x)
+
+        # 4) Group-wise MLPs (each sees group+aux+cov, outputs group-only)
+        group_outs = []
+        for gid, gidx in self.group_registry.items():
+            covs = self.covariate_registry.get(gid, [])
+            in_idx = gidx + self.aux_indices + covs
+            xg = x[:, :, in_idx]  # [B, time, group+aux+cov]
+            out_g = self.group_mlps[gid](xg)  # [B, time, group]
+            group_outs.append(out_g)
+
+        # 5) Recombine groups; they should already be ordered correctly
+        x_cat = torch.cat(group_outs, dim=2)  # [B, time, sum(group_sizes)]
+        x = torch.transpose(x_cat, 1, 2)  # [B, series_group_only, time]
+
+        # 6) Final residual
+        return x + identity
 
 
 class TemporalProjection(nn.Module):
-    """
-    Final layer to project the data in the model back into the
-    original format to serve as a forecast.
-    """
+    """Projection from timesteps to forecast."""
 
     def __init__(self,
                  seq_len,
@@ -100,50 +145,40 @@ class TemporalProjection(nn.Module):
                             )
 
     def forward(self, x):
+        # x is [batch_size, time series, time steps]
         x = self.fc(x)
         x = x.permute(0, 2, 1)
+        # output [batch_size, forecasted steps, time_series]
         return x
 
 
-class TSMixer(nn.Module):
-    """ Pytorch model based roughly on Google Research's 2023 paper on TSMixer. """
-
+class HierarchicalTimeSeriesMixer(nn.Module):
     def __init__(self,
                  lookback: int,
-                 features: int,
+                 group_registry: Dict[str, List[int]],
+                 covariate_registry: Dict[str, List[int]],
+                 aux_indices: List[int],
+                 hidden_features: int,
                  forecast: int,
                  blocks: int,
                  dropout: float,
-                 num_aux: int = 0,
                  ):
-        """
-        :param lookback: The number of prior timesteps to use as features for predictions.
-        :type lookback: int
-        :param features: The number of columns in the data that represent type series.
-        :type features: int
-        :param forecast: The number of future timesteps to forecast when predicting.
-        :type forecast: int
-        :param blocks: The number of Time Series Mixer blocks to use in the model. More blocks means a deeper model.
-        :type blocks: int
-        :param dropout: The proportion of weights to drop in the parameters during training (for regularization).
-                        Note that empirically, setting unusually high dropout often works well with this model.
-        :type dropout: float
-        :param num_aux: The number of auxiliary features in the data.
-        :type num_aux: int
-        """
-        assert features > 0, "Cannot have a model with no features!"
-        assert forecast > 0, "Cannot have a model with no forecasts!"
-        assert num_aux > 0, "Must have at least one auxiliary feature!"
 
         super().__init__()
-        self.features = features
-        self.num_aux = num_aux
         self.model = nn.Sequential(*[
-            nn.Sequential(*(MixerLayer(lookback, features, dropout) for _ in range(blocks))),
+            nn.Sequential(*(GroupedMixerBlock(
+                lookback,
+                group_registry,
+                covariate_registry if i == 0 else {},
+                aux_indices if i == 0 else [],
+                hidden_features,
+                dropout) for i in range(blocks)
+                           )
+                         ),
             TemporalProjection(lookback, forecast)
         ])
 
     def forward(self, x):
         x = self.model(x)
-        # Will not return auxiliary features in the prediction!
-        return x[:, :, :self.features-self.num_aux]
+        # Does not return covariate or auxiliary features in the prediction!
+        return x

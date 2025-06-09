@@ -1,4 +1,4 @@
-from .tsm import TSM
+from .htsm import HTSM
 from .utils import get_tsds
 from .utils import get_dataloaders
 from .utils import TSTransformer

@@ -1,8 +1,10 @@
+from collections import defaultdict
 import numpy as np
 import pandas as pd
+import re
 import torch
 from torch.utils.data import Dataset, DataLoader
-from typing import Tuple
+from typing import Tuple, Dict, List
 
 
 class TSTransformer:
@@ -89,56 +91,38 @@ class TSTransformer:
 class TSManager:
     "Helper class for a Pandas DataFrame of Time Series variable transformations."""
 
-    def __init__(self,
-                 parallel_series_df: pd.DataFrame,
-                 num_aux: int = 0,
-                 ) -> None:
+    def __init__(self, parallel_series_df: pd.DataFrame) -> None:
         """
-        Create and record transforms for every non-auxiliary features in
+        Create and record transforms for every non-auxiliary feature in
         the DataFrame.
 
-        Auxiliary features are expected to be the right-most columns!
-
-        :param parallel_series_df: A Pandas Dataframe object in which rows are timesteps and columns are series or
-                                   auxiliary features.
-        :type parallel_series_df: pd.core.Frame.DataFrame
-        :param num_aux: The number of auxiliary features in the DataFrame.
-        :type num_aux: int
+        Global auxiliary columns should be prefixed with aux_ to avoid any transformation.
         """
         # This won't work if there is no timeseries in the DataFrame!
-        assert len(parallel_series_df.columns) - num_aux > 0, "Must have at least 1 time series, not just auxiliaries!"
+        assert len(parallel_series_df.columns) > 0, "Must have at least 1 time series!"
 
         # TSManager holds a dictionary of a TSTransformer for every series in order to manage the transformations.
         self.transforms_ = dict()
 
         # Loop through every non-auxiliary column of the parallel_series_df and instantiate a TSTransformer for it.
-        for col in list(parallel_series_df.iloc[:, :(len(parallel_series_df.columns) - num_aux)].columns):
+        for col in list(parallel_series_df.columns):
+            if col.split('_')[0] == 'aux':
+                # If the column is prefixed with aux_, skip it so that it isn't transformed.
+                continue
             self.transforms_[col] = TSTransformer()
 
-    def transform_all(self,
-                      parallel_series_df: pd.DataFrame,
-                      ) -> pd.DataFrame:
-        """ Apply transforms to all non-auxiliary columns of the given DataFrame.
-
-        :param parallel_series_df: A Pandas Dataframe object in which rows are timesteps and columns are series or
-                                   auxiliary features.
-        :type parallel_series_df: pd.core.Frame.DataFrame
-        :return: The transformed DataFrame in which all time series have been de-trended and normalized.
-        :rtype: pd.core.Frame.DataFrame
-        """
+    def transform_all(self, parallel_series_df: pd.DataFrame) -> pd.DataFrame:
+        """ Apply transforms to all registered columns of the given DataFrame. """
 
         # For every column that had a TSTransformer made for it during initialization, perform that transformation.
         for key in self.transforms_.keys():
             parallel_series_df.loc[:, key] = self.transforms_[key].transform(parallel_series_df.loc[:, key].values)
         return parallel_series_df
 
-    def invert_all(self,
-                   parallel_series_df: pd.DataFrame,
-                   ) -> pd.DataFrame:
+    def invert_all(self, parallel_series_df: pd.DataFrame) -> pd.DataFrame:
         """ Invert transforms of all non-auxiliary columns of the given DataFrame.
 
-        :param parallel_series_df: A Pandas Dataframe object in which rows are timesteps and columns are series or
-                                   auxiliary features.
+        :param parallel_series_df: A Pandas Dataframe object in which rows are timesteps and columns are features.
         :type parallel_series_df: pd.core.Frame.DataFrame
         :return: The inverted DataFrame in which all time series have been re-trended and reverted to original scale.
         :rtype: pd.core.Frame.DataFrame
@@ -149,86 +133,101 @@ class TSManager:
 
 
 class TSDS(Dataset):
-    """
-    Inherits from torch.utils.data.Dataset.
-
-    A time series dataset from a data_frame consisting of multiple parallel
-    time series and optionally auxiliary features.
-
-    Rows are expected to be time steps. Columns are expected to be time series
-    or auxiliary features.
-
-    Auxiliary features are temporal features that apply to all series, such as
-    time step or feature engineered periodicity data. They are NOT static covariates
-    of any specific series.
-
-    Auxiliary features are assumed to be the right-most columns. They are included in
-    the predictor portion of __getitem__, but not in the target portion.
-    """
-
     def __init__(self,
                  parallel_time_series: pd.DataFrame,
                  lookback: int,
                  forecast: int = 1,
-                 num_aux: int = 0,
                  ):
-        self.data = torch.from_numpy(parallel_time_series.values).to(torch.float32)
-        self.num_aux = num_aux
+        self.df = parallel_time_series.copy()
         self.lookback = lookback
         self.forecast = forecast
 
-        assert self.__len__() > 0, "There are no remaining time steps in the data after lookback and forecast!"
-        assert self.num_aux >= 0, "The current code expects at least 1 auxiliary feature (timestep or periodicity, etc)"
+        # Patterns
+        group_pattern = re.compile(r'^g\d+_')
+        cov_pattern = re.compile(r'^c\d+_')
+        aux_prefix = 'aux_'
+        default_group = 'g0_'
+
+        # Step 1: Normalize unnamed columns (assume group 0)
+        new_cols = []
+        for col in self.df.columns:
+            if col.startswith(aux_prefix) or group_pattern.match(col) or cov_pattern.match(col):
+                new_cols.append(col)
+            else:
+                new_cols.append(f"{default_group}{col}")
+        self.df.columns = new_cols
+
+        # Step 2: Build column sets
+        self.group_cols = [c for c in self.df.columns if group_pattern.match(c)]
+        self.cov_cols = [c for c in self.df.columns if cov_pattern.match(c)]
+        self.aux_cols = [c for c in self.df.columns if c.startswith(aux_prefix)]
+
+        # Order the columns into blocks, [g1, g2, g3, ..., c1, c2, c3, ..., aux_1, aux_2, aux_3, ...]
+        # This is important to keep group-wise operations correct inside the network
+        ordered_cols = (
+                [c for c in self.df.columns if c in self.group_cols] +
+                [c for c in self.df.columns if c in self.cov_cols] +
+                [c for c in self.df.columns if c in self.aux_cols]
+        )
+        self.df = self.df[ordered_cols]
+
+        # Step 3: Build index mappings
+        self.aux_indices = [self.df.columns.get_loc(c) for c in self.aux_cols]
+        self.group_indices = [self.df.columns.get_loc(c) for c in self.group_cols]
+        self.cov_indices = [self.df.columns.get_loc(c) for c in self.cov_cols]
+
+        # Step 4: Build registries
+        self.group_registry: Dict[str, List[int]] = defaultdict(list)
+        self.covariate_registry: Dict[str, List[int]] = defaultdict(list)
+
+        for col in self.group_cols:
+            group_id = col.split('_')[0]
+            idx = self.df.columns.get_loc(col)
+            self.group_registry[group_id].append(idx)
+
+        for col in self.cov_cols:
+            cov_id = col.split('_')[0].replace('c', 'g')  # Convert c1 → g1
+            idx = self.df.columns.get_loc(col)
+            self.covariate_registry[cov_id].append(idx)
+
+        self.group_registry = dict(self.group_registry)
+        self.covariate_registry = dict(self.covariate_registry)
+        self.group_ids: List[str] = list(self.group_registry.keys())
+
+        # Convert data to tensor [T, S]
+        self.data = torch.from_numpy(self.df.values).float()
+
+        assert self.__len__() > 0, "Not enough data for lookback + forecast"
 
     def __len__(self) -> int:
-        """
-        The length of the dataset is the number of time steps remaining
-        after subtracting the lookback and forecast lengths.
-        """
         return self.data.shape[0] - (self.lookback + self.forecast)
 
-    def __getitem__(self,
-                    idx: int,
-                    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """ Return an X, y tuple. Auxiliary features are in X, but not y. """
-
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         if idx >= self.__len__():
-            raise IndexError("Index out range")
+            raise IndexError("Index out of range")
 
-        return (self.data[idx: idx + self.lookback].permute(1, 0),
-                self.data[idx + self.lookback: idx + self.lookback + self.forecast, :-self.num_aux])
+        X_window = self.data[idx: idx + self.lookback]  # [L, S]
+        y_window = self.data[idx + self.lookback: idx + self.lookback + self.forecast, :]
+
+        X = X_window.permute(1, 0)  # [T, L]
+        y = y_window[:, self.group_indices]  # [F, T_core]
+
+        return X, y
 
 
 def get_tsds(parallel_series_df: pd.DataFrame,
              lookback: int,
              forecast: int,
              train_prop: float,
-             num_aux: int = 0) -> Tuple[TSDS, TSDS]:
-    """ Return two TSDS classes for training and testing.
-    :param parallel_series_df: A Pandas Dataframe object in which rows are timesteps and columns are series or
-                               auxiliary features.
-    :type parallel_series_df: pd.core.Frame.DataFrame
-    :param lookback: The number of prior timesteps to consider when making forecasting.
-    :type lookback: int
-    :param forecast: The number of future timesteps to predict when making a forecast.
-    :type forecast: int
-    :train_prop: The proportion of the timesteps in the data to reserve for training. The rest will be for testing.
-    :type train_prop: float
-    :param num_aux: The number of auxiliary features in the DataFrame.
-    :type num_aux: int
-    :return: A tuple containing the train dataset and the test dataset.
-    :rtype: Tuple[TSDS, TSDS]
-    """
-
+             ) -> Tuple[TSDS, TSDS]:
     assert 0.0 < train_prop < 1.0, "train_prop must be between 0.0 and 1.0, exclusive!"
-    assert num_aux >= 0, "num_aux must be at least one! Try using the normalized timestep or the sin/cos periodicity."
 
     # Get the number of samples to use for training by rounding the train_prop proportion to the nearest sample.
     train_len = round(parallel_series_df.shape[0] * train_prop)
 
     # Instantiate the train_ds and test_ds with the correct number of samples.
-    train_ds = TSDS(parallel_series_df.loc[: train_len, :], lookback, forecast, num_aux=num_aux)
-    test_ds = TSDS(parallel_series_df.loc[train_len:, :], lookback, forecast, num_aux=num_aux)
+    train_ds = TSDS(parallel_series_df.loc[: train_len, :], lookback, forecast)
+    test_ds = TSDS(parallel_series_df.loc[train_len:, :], lookback, forecast)
 
     return train_ds, test_ds
 
@@ -240,25 +239,6 @@ def get_dataloaders(train_ds: TSDS,
                     shuffle_test: bool = False,
                     drop_last: bool = False,
                     ) -> Tuple[DataLoader, DataLoader]:
-    """ Return two Pytorch DataLoaders for training and testing.
-
-    :param train_ds: The TSDS object containing the training data.
-    :type train_ds: TSDS
-    :param test_ds: The TSDS object containing the testing data.
-    :type test_ds: TSDS
-    :param train_batch_size: The batch size that the dataloaders should use for training.
-    :type train_batch_size: int
-    :param test_batch_size: The batch size that the dataloaders should use for testing (can be different from training
-                            since its possible that there are very few samples in our test set).
-    :type test_batch_size: int
-    :param shuffle_test: Whether the dataloaders should shuffle the data to randomize the samples in each batch.
-    :type shuffle_test: bool
-    :param drop_last: Should the dataloaders drop the final batch?
-    :type drop_last: bool
-    :return: A tuple containing the train dataloader and the test dataloader.
-    :rtype: Tuple[DataLoader, DataLoader]
-    """
-
     train_loader = DataLoader(train_ds,
                               batch_size=train_batch_size,
                               shuffle=True,
@@ -271,4 +251,3 @@ def get_dataloaders(train_ds: TSDS,
                              )
 
     return train_loader, test_loader
-

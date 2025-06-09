@@ -3,7 +3,8 @@ import pandas as pd
 import torch
 from torch.optim import Adam
 
-from deep_forecasting import TSM, TSManager, get_tsds, get_dataloaders
+from deep_forecasting import HTSM, TSManager, get_tsds, get_dataloaders
+from deep_forecasting.utils import TSDS
 
 # This is just a sample script of how the library works.
 
@@ -27,7 +28,7 @@ print(data.head())
 # We're using a helper class to automatically detrend and normalize all of our time series data and store the info
 # to be able to invert that process to get the forecasts back to the natural scale.
 # Note that the three aux features are timestep (to learn linear trends), and sin/cos (to learn seasonality)
-manager = TSManager(data, num_aux=num_aux)
+manager = TSManager(data)
 processed_data = manager.transform_all(data)
 
 # Load the processed data into Pytorch datasets using a function
@@ -35,25 +36,26 @@ train_ds, test_ds = get_tsds(processed_data,
                              lookback=lookback,
                              forecast=forecast,
                              train_prop=0.7,
-                             num_aux=num_aux,
                              )
 
 # Put the datasets into Pytorch dataloaders using a function
 train_loader, test_loader = get_dataloaders(train_ds, test_ds, train_batch_size=4, test_batch_size=4)
 
 # Instantiate the model class. This contains both the Pytorch model and some helpful additional functionality.
-model = TSM(lookback=lookback,
-            features=103,
-            forecast=forecast,
-            blocks=1,
-            dropout=0.75,
-            num_aux=num_aux,
-            device=device,
-            )
+model = HTSM(lookback=lookback,
+             dataset=train_ds,
+             hidden_features=24,
+             forecast=forecast,
+             blocks=1,
+             dropout=0.7,
+             num_aux=num_aux,
+             device=device,
+             )
 
 # Choose the optimizer we'll be using.
 optimizer = Adam(params=model.model.parameters(),
                  lr=0.001,
+                 weight_decay=0.001,
                  )
 
 # Train the model.
@@ -70,17 +72,23 @@ model.loss_curve()
 print(f"Shape of an observation is: {test_ds[0][0].shape}")
 print(f"The shape of all processed data is: {processed_data.shape}")
 
-# Given a timeseries up to time t and the targets up to t + forecast, the model can score itself and
+# Given a timeseries up until time t and the targets up to t + forecast, the model can score itself and
 # report how much better it is than a naive model using Mean Absolute Scaled Error (MASE)
 # NOTE that the .score function works best when passing it predictions from an alternative model to which we want
 # our model's predictions compared.
-print(f"Model predictions are {100 * (1 - model.score(test_ds[0][0], test_ds[0][1])):.2f}% better than Naive Prediction error.")
+#print(f"Model predictions are {100 * (1 - model.score(test_ds[0][0], test_ds[0][1])):.2f}% better than Naive Prediction error.")
 
 # With no static data and only the periodicity and timesteps as auxiliary data, we can simultaneously forecast
 # liquor revenues of all 100 counties in Iowa 6 months into the future with a ~50% improvement over naive methods.
 
-# To get the forecasts back on the original scale, we can use predict_scale and pass the data and TSManager.
-# scaled_preds = model.predict_scale(data=processed_data,
+#preds = model.predict(observations=processed_data.values[-lookback:, :])
+
+
+# To get the forecasts back on the original scale, we can use predict_scale and pass the dataset and TSManager.
+# scaled_preds = model.predict_scale(dataset=TSDS(processed_data, lookback, forecast),
 #                                    manager=manager,
-#                                    predictions_only=True,
+#                                    predictions_only=False,
 #                                    )
+# for series in scaled_preds.T[:10]:
+#     plt.plot(series)
+#     plt.show()
