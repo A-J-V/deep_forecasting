@@ -86,10 +86,31 @@ print(f"The shape of all processed data is: {processed_data.shape}")
 
 
 # To get the forecasts back on the original scale, we can use predict_scale and pass the dataset and TSManager.
-# scaled_preds = model.predict_scale(dataset=TSDS(processed_data, lookback, forecast),
-#                                    manager=manager,
-#                                    predictions_only=False,
-#                                    )
-# for series in scaled_preds.T[:10]:
-#     plt.plot(series)
-#     plt.show()
+scaled_preds = model.predict_scale(dataset=TSDS(processed_data, lookback, forecast),
+                                   manager=manager,
+                                   predictions_only=False,
+                                   headers=True,
+                                   )
+
+# View a few forecasts to see if they look reasonable.
+for i in range(min(10, scaled_preds.shape[1])):
+    # Extract a single complete time series
+    single_series = scaled_preds.iloc[:, i]
+
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(12, 4))
+
+    # Print debugging info
+    print(f"Plotting series {i + 1}, data shape: {single_series.shape}")
+
+    # Plot the time series with index as x-axis
+    ax.plot(single_series.index, single_series.values)
+
+    # Add the vertical line at the forecast boundary
+    ax.axvline(x=scaled_preds.shape[0] - forecast, color='red', linestyle='--')
+
+    # Add a title to identify which series we're looking at
+    ax.set_title(f"Time Series {i + 1}")
+
+    # Show the plot
+    plt.show()
