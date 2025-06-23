@@ -206,11 +206,14 @@ class HTSM:
         data_with_preds = full_core.squeeze(0).permute(1, 0).cpu().numpy()
         # The reason we need the col names despite the method returning a Numpy array is that the TSManager needs the
         # names to be able to know how to invert each series correctly.
+
+        core_column_names = [dataset.df.columns[i] for i in series_idx]
+
         if remove_prefixes:
             prefix_pattern = r'^(g\d+[_.]|c\d+[_.]|aux_)'
-            col_names = [re.sub(prefix_pattern, '', dataset.df.columns[i]) for i in series_idx]
+            col_names = [re.sub(prefix_pattern, '', name) for name in core_column_names]
         else:
-            col_names = dataset.df.columns.to_list()
+            col_names = core_column_names
 
         # 8) Convert to a Pandas DataFrame and invert the preprocessing to get everything back on the original scale.
         scaled_preds = pd.DataFrame(data_with_preds, columns=col_names)
