@@ -18,7 +18,7 @@ forecast = 6
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # Load the demo dataset. The prepared iowa liquor demo dataset is available on GitHub.
-data = pd.read_csv("../demo_folder/walmart_food.csv")
+data = pd.read_csv("../demo_folder/iowa_liquor_demo_dataset.csv")
 print(data.head())
 
 # We're using a helper class to automatically detrend and normalize all of our time series data and store the info
