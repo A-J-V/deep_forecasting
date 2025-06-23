@@ -19,7 +19,6 @@ class HTSM:
                  forecast: int,
                  blocks: int,
                  dropout: float = 0.0,
-                 num_aux: int = 0,
                  device: str = 'cpu',
                  final_global_mixer: bool = False,
                  ) -> None:
@@ -39,12 +38,9 @@ class HTSM:
         :param dropout: The proportion of weights to drop in the parameters during training (for regularization).
                         Note that empirically, setting unusually high dropout often works well with this model.
         :type dropout: float
-        :param num_aux: The number of auxiliary features in the data.
-        :type num_aux: int
         :param device: Which device to use with Pytorch. Tested using 'cpu' and 'cuda'.
         :type device: str
         """
-        assert num_aux >= 0, "num_aux must be >= 0! Try using normalized timestep or sin/cos for periodicity."
         assert 0.0 <= dropout < 1.0, "dropout must fall within [0.0, 1.0)!"
 
 
@@ -75,7 +71,6 @@ class HTSM:
                      'train_loss': [],
                      'test_loss': [],
                      }
-        self.num_aux = num_aux
         self.device = device
 
     def train(self,
@@ -84,10 +79,16 @@ class HTSM:
               epochs: int,
               loss_fn: torch.nn.Module,
               optimizer: torch.optim.Optimizer,
-              verbose=False,
+              verbose: bool = False,
+              final_step_only : bool = False,
               ):
 
-        """ Train the network! """
+        """ Train the network!
+
+        Note that if final_step_only is True, you CANNOT return the forecasts to their original scale!
+        This is because rescaling relies on a cumulative sum, but if the model only learns the final step, then
+        the ignored forecast steps will be nonsense and will ruin the forecast when used in the cumulative sum.
+        """
 
         for epoch in range(1, epochs + 1):
 
@@ -95,11 +96,13 @@ class HTSM:
                                           dataloader=train_dataloader,
                                           loss_fn=loss_fn,
                                           optimizer=optimizer,
+                                          final_step_only=final_step_only,
                                           )
 
             test_loss = self.test_step_(model=self.model,
                                         dataloader=test_dataloader,
                                         loss_fn=loss_fn,
+                                        final_step_only=final_step_only,
                                         )
 
             self.logs['epoch'].append(epoch)
@@ -245,6 +248,7 @@ class HTSM:
                     dataloader: torch.utils.data.DataLoader,
                     loss_fn: torch.nn.Module,
                     optimizer: torch.optim.Optimizer,
+                    final_step_only: bool = False,
                     ) -> float:
 
         # Set the model to train mode
@@ -260,8 +264,17 @@ class HTSM:
             # 1. Forward pass
             y_predictions = model(X)
 
-            # 2. Calculate the loss
-            loss = loss_fn(y_predictions, y)
+            # 2. Calculate the loss; mask to the final step if requested
+            if final_step_only:
+                # Here, we are only considering the final step in the loss
+                # to avoid wasting capacity on intermediate predictions
+                # that may be irrelevant, depending on your use-case.
+                # Note y_predictions and y have shape [batch, forecast_steps, series]
+
+                loss = loss_fn(y_predictions[:, -1, :], y[:, -1, :])
+            else:
+                loss = loss_fn(y_predictions, y)
+
             train_loss += loss.item()
 
             # 3. Zero out the gradients
@@ -282,6 +295,7 @@ class HTSM:
                    model: torch.nn.Module,
                    dataloader: torch.utils.data.DataLoader,
                    loss_fn: torch.nn.Module,
+                   final_step_only: bool = False,
                    ) -> float:
 
         # Set the model to evaluation mode
@@ -299,7 +313,13 @@ class HTSM:
                 y_predictions = model(X)
 
                 # 2. Calculate the loss
-                loss = loss_fn(y_predictions, y)
+                if final_step_only:
+                    # Only use the final forecast step for loss calculation
+                    # Note that y_predictions and y have shape [batch, forecast_steps, series]
+                    loss = loss_fn(y_predictions[:, -1, :], y[:, -1, :])
+
+                else:
+                    loss = loss_fn(y_predictions, y)
                 test_loss += loss.item()
 
         # Adjust the metrics to be the per-batch averages

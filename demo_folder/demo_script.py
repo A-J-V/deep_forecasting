@@ -14,15 +14,11 @@ lookback = 12
 # Forecast is how many time steps into the future we want to forecast
 forecast = 6
 
-# The number of auxiliary features is the number of non-timeseries features we're including that apply to every
-# time series in the data set. In this example, we have 3 which are sin(month), cosine(month), and timestep.
-num_aux = 3
-
 # Set the device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # Load the demo dataset. The prepared iowa liquor demo dataset is available on GitHub.
-data = pd.read_csv("../demo_folder/iowa_liquor_demo_dataset.csv")
+data = pd.read_csv("../demo_folder/walmart_food.csv")
 print(data.head())
 
 # We're using a helper class to automatically detrend and normalize all of our time series data and store the info
@@ -48,7 +44,6 @@ model = HTSM(lookback=lookback,
              forecast=forecast,
              blocks=1,
              dropout=0.7,
-             num_aux=num_aux,
              device=device,
              final_global_mixer=False,
              )
