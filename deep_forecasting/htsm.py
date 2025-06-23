@@ -149,7 +149,8 @@ class HTSM:
                       dataset: deep_forecasting.utils.TSDS,
                       manager: TSManager,
                       predictions_only: bool = True,
-                      headers: bool = False
+                      headers: bool = False,
+                      remove_prefixes: bool = True,
                       ) -> np.ndarray:
         """
         Feed the dataset through the model and returns forecasts on the original scale.
@@ -166,6 +167,7 @@ class HTSM:
         :param manager: The TSManager that will be used to rescale the predictions.
         :param predictions_only: `True` returns predictions only, `False` returns all data with predictions at the end.
         :param headers: `True` returns a Pandas dataframe with column names, `False` returns a Numpy ndarray.
+        :param remove_prefixes: `True` removes prefixes from column names, `False` leaves them in place.
 
         :return: A batch of predictions converted to the original dataset's scale.
         :rtype: np.ndarray
@@ -196,9 +198,6 @@ class HTSM:
         series_idx = dataset.group_indices         # e.g. [1,2,3,...]
         core_series = data_tensor[:, series_idx, :]  # [1, series, time]
 
-        print(f"shape of core_series: {core_series.shape}")
-        print(f"shape of raw_preds: {raw_preds.shape}")
-
         # 6) Concatenate historical core time series' with their forecasts along the time axis
         full_core = torch.cat([core_series, raw_preds], dim=2)  # [1, series, time+forecast]
 
@@ -207,9 +206,11 @@ class HTSM:
         data_with_preds = full_core.squeeze(0).permute(1, 0).cpu().numpy()
         # The reason we need the col names despite the method returning a Numpy array is that the TSManager needs the
         # names to be able to know how to invert each series correctly.
-        prefix_pattern = r'^(g\d+[_.]|c\d+[_.]|aux_)'
-        col_names = [re.sub(prefix_pattern, '', dataset.df.columns[i]) for i in series_idx]
-        print(col_names)
+        if remove_prefixes:
+            prefix_pattern = r'^(g\d+[_.]|c\d+[_.]|aux_)'
+            col_names = [re.sub(prefix_pattern, '', dataset.df.columns[i]) for i in series_idx]
+        else:
+            col_names = dataset.df.columns.to_list()
 
         # 8) Convert to a Pandas DataFrame and invert the preprocessing to get everything back on the original scale.
         scaled_preds = pd.DataFrame(data_with_preds, columns=col_names)

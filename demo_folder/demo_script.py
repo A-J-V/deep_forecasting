@@ -68,19 +68,7 @@ model.loss_curve()
 print(f"Shape of an observation is: {test_ds[0][0].shape}")
 print(f"The shape of all processed data is: {processed_data.shape}")
 
-# Given a timeseries up until time t and the targets up to t + forecast, the model can score itself and
-# report how much better it is than a naive model using Mean Absolute Scaled Error (MASE)
-# NOTE that the .score function works best when passing it predictions from an alternative model to which we want
-# our model's predictions compared.
-#print(f"Model predictions are {100 * (1 - model.score(test_ds[0][0], test_ds[0][1])):.2f}% better than Naive Prediction error.")
-
-# With no static data and only the periodicity and timesteps as auxiliary data, we can simultaneously forecast
-# liquor revenues of all 100 counties in Iowa 6 months into the future with a ~50% improvement over naive methods.
-
-#preds = model.predict(observations=processed_data.values[-lookback:, :])
-
-
-# To get the forecasts back on the original scale, we can use predict_scale and pass the dataset and TSManager.
+# To get the forecasts back on the original scale, we can use predict_scale and pass the full dataset and TSManager.
 scaled_preds = model.predict_scale(dataset=TSDS(processed_data, lookback, forecast),
                                    manager=manager,
                                    predictions_only=False,
