@@ -120,15 +120,17 @@ class TSManager:
         return parallel_series_df
 
     def invert_all(self, parallel_series_df: pd.DataFrame) -> pd.DataFrame:
-        """ Invert transforms of all non-auxiliary columns of the given DataFrame.
+        """ Invert all available series' in the given DataFrame.
 
         :param parallel_series_df: A Pandas Dataframe object in which rows are timesteps and columns are features.
         :type parallel_series_df: pd.core.Frame.DataFrame
         :return: The inverted DataFrame in which all time series have been re-trended and reverted to original scale.
         :rtype: pd.core.Frame.DataFrame
         """
+        columns_received = list(parallel_series_df.columns)
         for key in self.transforms_.keys():
-            parallel_series_df.loc[:, key] = self.transforms_[key].invert(parallel_series_df.loc[:, key].values)
+            if key in columns_received:
+                parallel_series_df.loc[:, key] = self.transforms_[key].invert(parallel_series_df.loc[:, key].values)
         return parallel_series_df
 
 
