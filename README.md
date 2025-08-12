@@ -1,7 +1,7 @@
 # Deep Forecasting
 
 ## Description
-This project demonstrates the power of deep learning applied to forecasting use-cases by engineering a model inspired by Google Research's TSMixer architecture as described in [the 2023 paper](https://arxiv.org/abs/2303.06053) by Chen et. al.
+This package contains a powerful forecasting model able to handle many parallel time-series at once with the ability to handle clusters/hierarchies natively.
 
 A demonstration of the model's capacity to simultaneously forecast a large number of parallel time series is included using data derived from an open [dataset](https://data.iowa.gov/Sales-Distribution/Iowa-Liquor-Sales/m3tr-qhgy/about_data) that records Iowa liquor sales.
 
@@ -11,7 +11,7 @@ A demonstration of the model's capacity to simultaneously forecast a large numbe
 ![Demo](https://img.shields.io/badge/Demo-Complete-green)
 
 ## Installation
-While this is a small project not published to PyPi, it is still fully functional and can be used for forecasting.
+While this is not yet published to PyPi, it is fully functional and can be used for forecasting.
 
 Install directly from GitHub using pip
 
