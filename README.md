@@ -18,6 +18,7 @@ Install directly from GitHub using pip
 `pip install git+https://github.com/A-J-V/deep_forecasting.git@master`
 
 ## Usage and Demo
+<This needs to be updated to reflect the new ability for the package to handle clustering / hierarchies natively>
 This repo can be used in parallel time series forecasting. The model and utilities are included in their respective py files, and __main__.py and the dataset in the assets folder provide a working example.
 
 The example dataset is a 100 parallel time series representing the liquor revenues in the counties of Iowa over the last few years. Each observation is one month. The last three features are sin/cos encoded periodicity and the time step.
